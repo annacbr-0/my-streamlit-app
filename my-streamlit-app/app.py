@@ -4,7 +4,7 @@ import json
 from google.cloud import vision
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from PIL import Image
 import streamlit as st
 
@@ -38,11 +38,11 @@ def analyze_and_label_images(vision_client, drive_service, items, output_folder_
         response = vision_client.label_detection(image=image)
         labels = [label.description for label in response.label_annotations]
         
-        # Save label data
+        # Display results in Streamlit
         label_text = ', '.join(labels)
         st.write(f"Image: {item['name']}, Labels: {label_text}")
         
-        # Create a labeled file and save back to Google Drive (optional)
+        # Save labeled image back to Google Drive (optional)
         output_file_metadata = {'name': f"Labeled_{item['name']}", 'parents': [output_folder_id]}
         media = MediaIoBaseUpload(io.BytesIO(file_stream.read()), mimetype='image/jpeg')
         drive_service.files().create(body=output_file_metadata, media_body=media).execute()
@@ -62,5 +62,6 @@ if folder_id:
         output_folder_id = st.text_input("Enter the Output Google Drive Folder ID:")
         analyze_and_label_images(vision_client, drive_service, items, output_folder_id)
         st.write("Image analysis and labeling completed!")
+
 
 
