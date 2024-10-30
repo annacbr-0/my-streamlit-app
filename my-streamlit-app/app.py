@@ -44,5 +44,23 @@ def analyze_and_label_images(vision_client, drive_service, items, output_folder_
         
         # Create a labeled file and save back to Google Drive (optional)
         output_file_metadata = {'name': f"Labeled_{item['name']}", 'parents': [output_folder_id]}
-        media = MediaIoBaseUpload(io.BytesIO(file
+        media = MediaIoBaseUpload(io.BytesIO(file_stream.read()), mimetype='image/jpeg')
+        drive_service.files().create(body=output_file_metadata, media_body=media).execute()
+
+# Streamlit app structure
+st.title("Automated Image Analysis and Labeling with Google Vision API")
+
+# Google Drive folder input
+folder_id = st.text_input("Enter the Google Drive Folder ID:")
+
+if folder_id:
+    vision_client, drive_service = load_google_services()
+    items = get_images_from_drive(drive_service, folder_id)
+    st.write(f"Found {len(items)} images in the folder.")
+    
+    if st.button("Analyze Images"):
+        output_folder_id = st.text_input("Enter the Output Google Drive Folder ID:")
+        analyze_and_label_images(vision_client, drive_service, items, output_folder_id)
+        st.write("Image analysis and labeling completed!")
+
 
