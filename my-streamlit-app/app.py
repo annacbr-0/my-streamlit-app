@@ -1,42 +1,48 @@
-import streamlit as st
-from google.cloud import vision
-from PIL import Image
+import os
 import io
 import json
-import os
+from google.cloud import vision
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from PIL import Image
+import streamlit as st
 
-# Step 1: Set up Google Vision API credentials
-def load_vision_client():
-    # Load credentials from environment variable (set in Streamlit Cloud secrets)
+# Initialize Google APIs
+def load_google_services():
     credentials_info = json.loads(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
-    client = vision.ImageAnnotatorClient.from_service_account_info(credentials_info)
-    return client
+    credentials = service_account.Credentials.from_service_account_info(credentials_info)
+    
+    # Initialize Vision and Drive clients
+    vision_client = vision.ImageAnnotatorClient(credentials=credentials)
+    drive_service = build('drive', 'v3', credentials=credentials)
+    return vision_client, drive_service
 
-# Step 2: Function to analyze the uploaded image
-def analyze_image(image_bytes):
-    client = load_vision_client()
-    image = vision.Image(content=image_bytes)
-    response = client.label_detection(image=image)
-    labels = response.label_annotations
-    return [(label.description, label.score) for label in labels]
+# Retrieve image files from a Google Drive folder
+def get_images_from_drive(drive_service, folder_id):
+    results = drive_service.files().list(q=f"'{folder_id}' in parents and mimeType contains 'image/'").execute()
+    items = results.get('files', [])
+    return items
 
-# Step 3: Streamlit App Layout
-st.title("Image Analysis Web App with Google Vision API")
-st.write("Upload an image to analyze it using Google Vision API")
+# Download and analyze images
+def analyze_and_label_images(vision_client, drive_service, items, output_folder_id):
+    for item in items:
+        request = drive_service.files().get_media(fileId=item['id'])
+        file_stream = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_stream, request)
+        downloader.next_chunk()
+        file_stream.seek(0)
+        
+        # Vision API image analysis
+        image = vision.Image(content=file_stream.read())
+        response = vision_client.label_detection(image=image)
+        labels = [label.description for label in response.label_annotations]
+        
+        # Save label data
+        label_text = ', '.join(labels)
+        st.write(f"Image: {item['name']}, Labels: {label_text}")
+        
+        # Create a labeled file and save back to Google Drive (optional)
+        output_file_metadata = {'name': f"Labeled_{item['name']}", 'parents': [output_folder_id]}
+        media = MediaIoBaseUpload(io.BytesIO(file
 
-# Step 4: Image upload
-uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
-
-if uploaded_file:
-    # Display uploaded image
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
-
-    # Analyze the image using Google Vision API
-    image_bytes = uploaded_file.read()
-    labels = analyze_image(image_bytes)
-
-    # Display the analysis results
-    st.write("Detected Labels:")
-    for label, score in labels:
-        st.write(f"- {label}: {score:.2f}")
